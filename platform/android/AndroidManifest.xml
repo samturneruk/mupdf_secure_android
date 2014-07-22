@@ -5,7 +5,10 @@
 	android:versionName="@string/version"
 	android:installLocation="auto">
 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<!-- SAM: Removed Internet access
+
 	<uses-permission android:name="android.permission.INTERNET" />
+-->
 	<supports-screens
 		android:smallScreens="true"
 		android:normalScreens="true"

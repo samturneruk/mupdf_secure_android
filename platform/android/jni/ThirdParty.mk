@@ -28,8 +28,13 @@ LOCAL_CFLAGS += -DMEMENTO -DMEMENTO_LEAKONLY
 endif
 
 LOCAL_MODULE := mupdfthirdparty
+
+ifdef JS_BUILD
 LOCAL_SRC_FILES := \
-	$(MY_ROOT)/thirdparty/mujs/one.c \
+	$(MY_ROOT)/thirdparty/mujs/one.c
+endif
+
+LOCAL_SRC_FILES += \
 	$(MY_ROOT)/thirdparty/jbig2dec/jbig2.c \
 	$(MY_ROOT)/thirdparty/jbig2dec/jbig2_arith.c \
 	$(MY_ROOT)/thirdparty/jbig2dec/jbig2_arith_iaid.c \

@@ -18,6 +18,8 @@ ifdef SSL_BUILD
 LOCAL_CFLAGS += -DHAVE_OPENSSL
 endif
 
+LOCAL_CFLAGS += -DNOCJK
+
 LOCAL_C_INCLUDES := \
 	../../thirdparty/jbig2dec \
 	../../thirdparty/openjpeg/libopenjpeg \
@@ -53,9 +55,16 @@ LOCAL_SRC_FILES := \
 	$(wildcard $(MY_ROOT)/source/cbz/*.c) \
 	$(wildcard $(MY_ROOT)/source/img/*.c) \
 	$(wildcard $(MY_ROOT)/source/tiff/*.c)
+
+ifdef JS_BUILD
 LOCAL_SRC_FILES += \
 	$(MY_ROOT)/source/pdf/js/pdf-js.c \
 	$(MY_ROOT)/source/pdf/js/pdf-jsimp-mu.c
+else
+LOCAL_SRC_FILES += \
+	$(MY_ROOT)/source/pdf/js/pdf-js-none.c
+endif
+
 ifdef MEMENTO
 LOCAL_SRC_FILES += $(MY_ROOT)/source/fitz/memento.c
 endif

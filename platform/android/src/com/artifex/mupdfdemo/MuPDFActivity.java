@@ -7,8 +7,10 @@ import com.artifex.mupdfdemo.ReaderView.ViewMapper;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.IntentFilter;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -21,9 +23,12 @@ import android.os.Handler;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.method.PasswordTransformationMethod;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.animation.Animation;
 import android.view.animation.TranslateAnimation;
 import android.view.inputmethod.EditorInfo;
@@ -63,6 +68,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private TextView     mInfoView;
 	private ImageButton  mSearchButton;
 	private ImageButton  mReflowButton;
+	private ImageButton  mPrintButton;
 	private ImageButton  mOutlineButton;
 	private ImageButton	mMoreButton;
 	private TextView     mAnnotTypeText;
@@ -83,6 +89,18 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	private AsyncTask<Void,Void,MuPDFAlert> mAlertTask;
 	private AlertDialog mAlertDialog;
 	private FilePicker mFilePicker;
+
+	private static final String EXTRA_AUTO_CLOSE_DURATION = "auto_close_duration";
+	private int mAutoCloseDurationInMilliseconds = 0;
+	private Handler mAutoCloseHandler;
+	private final Runnable mAutoCloseRunnable = new Runnable() {
+		
+		@Override
+		public void run() {
+			finish();
+		}
+	};
+	private FinishBroadcastReceiver finishBroadcastReceiver;
 
 	public void createAlertWaiter() {
 		mAlertsActive = true;
@@ -245,6 +263,8 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 	public void onCreate(Bundle savedInstanceState)
 	{
 		super.onCreate(savedInstanceState);
+		
+		finishBroadcastReceiver = new FinishBroadcastReceiver(this);
 
 		mAlertBuilder = new AlertDialog.Builder(this);
 
@@ -320,6 +340,8 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 					core = openFile(Uri.decode(uri.getEncodedPath()));
 				}
 				SearchTaskResult.set(null);
+				
+				mAutoCloseDurationInMilliseconds = intent.getIntExtra(EXTRA_AUTO_CLOSE_DURATION, 0);
 			}
 			if (core != null && core.needsPassword()) {
 				requestPassword(savedInstanceState);
@@ -352,6 +374,22 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		}
 
 		createUI(savedInstanceState);
+	}
+	
+	@Override
+    protected void onResume() {
+		super.onResume();
+
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		makeAboveLockScreen(this);
+		
+		delayAutoClose();
+	}
+	
+	private void makeAboveLockScreen(Activity activity) {
+		activity.getWindow().addFlags(
+				WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+        );
 	}
 
 	public void requestPassword(final Bundle savedInstanceState) {
@@ -690,6 +728,10 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 
 	public void onDestroy()
 	{
+		if (finishBroadcastReceiver != null)
+			finishBroadcastReceiver.unregisterReceiver(this);
+		finishBroadcastReceiver = null;
+
 		if (mDocView != null) {
 			mDocView.applyToChildren(new ReaderView.ViewMapper() {
 				void applyToView(View view) {
@@ -703,6 +745,10 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 			mAlertTask.cancel(true);
 			mAlertTask = null;
 		}
+		if (mAutoCloseHandler != null) {
+			mAutoCloseHandler.removeCallbacks(mAutoCloseRunnable);
+			mAutoCloseHandler = null;
+		}
 		core = null;
 		super.onDestroy();
 	}
@@ -711,7 +757,6 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		button.setEnabled(enabled);
 		button.setColorFilter(enabled ? Color.argb(255, 255, 255, 255):Color.argb(255, 128, 128, 128));
 	}
-
 	private void setLinkHighlight(boolean highlight) {
 		mLinkHighlight = highlight;
 		// LINK_COLOR tint
@@ -866,6 +911,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mInfoView = (TextView)mButtonsView.findViewById(R.id.info);
 		mSearchButton = (ImageButton)mButtonsView.findViewById(R.id.searchButton);
 		mReflowButton = (ImageButton)mButtonsView.findViewById(R.id.reflowButton);
+		mPrintButton = (ImageButton)mButtonsView.findViewById(R.id.printButton);
 		mOutlineButton = (ImageButton)mButtonsView.findViewById(R.id.outlineButton);
 		mAnnotButton = (ImageButton)mButtonsView.findViewById(R.id.editAnnotButton);
 		mAnnotTypeText = (TextView)mButtonsView.findViewById(R.id.annotType);
@@ -879,6 +925,12 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		mPageNumberView.setVisibility(View.INVISIBLE);
 		mInfoView.setVisibility(View.INVISIBLE);
 		mPageSlider.setVisibility(View.INVISIBLE);
+		
+		mPrintButton.setVisibility(View.GONE);// SAM - removed print functionality
+		mLinkButton.setVisibility(View.GONE);// SAM - removed link clicking functionality
+		mMoreButton.setVisibility(View.GONE);// SAM - removed print\copy\edit sub menu
+		mAnnotButton.setVisibility(View.GONE);// SAM - removed annotation functionality
+		mOutlineButton.setVisibility(View.GONE);// SAM - removed outline functionality
 	}
 
 	public void OnMoreButtonClick(View v) {
@@ -1101,6 +1153,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 
 	@Override
 	public void onBackPressed() {
+		/* SAM - Removed save functionality
 		if (core != null && core.hasChanges()) {
 			DialogInterface.OnClickListener listener = new DialogInterface.OnClickListener() {
 				public void onClick(DialogInterface dialog, int which) {
@@ -1116,7 +1169,7 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 			alert.setButton(AlertDialog.BUTTON_POSITIVE, getString(R.string.yes), listener);
 			alert.setButton(AlertDialog.BUTTON_NEGATIVE, getString(R.string.no), listener);
 			alert.show();
-		} else {
+		} else*/ {
 			super.onBackPressed();
 		}
 	}
@@ -1127,5 +1180,63 @@ public class MuPDFActivity extends Activity implements FilePicker.FilePickerSupp
 		Intent intent = new Intent(this, ChoosePDFActivity.class);
 		intent.setAction(ChoosePDFActivity.PICK_KEY_FILE);
 		startActivityForResult(intent, FILEPICK_REQUEST);
+	}
+	
+	class FinishBroadcastReceiver extends BroadcastReceiver {
+		public static final String TAG = "FinishBroadcastReceiver";
+		public static final String ACTION_FINISH = "com.artifex.mupdfdemo.action.FINISH";
+		
+		public FinishBroadcastReceiver(Context context)
+		{
+			IntentFilter intentFilter = new IntentFilter();
+			intentFilter.addAction(ACTION_FINISH);
+			context.registerReceiver(this, intentFilter);
+		}
+	
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			String action = intent.getAction();
+			Log.v(TAG, "onReceive(); action: " + action);
+			
+			// Check actions
+			if (action.equals(ACTION_FINISH)) {
+				finish();// Close the activity
+			}
+			else {
+				Log.e(TAG, "Unknown action: " + action);
+			}
+		}
+		
+		public void unregisterReceiver(Context context)
+		{
+			context.unregisterReceiver(this);
+		}
+	}
+	
+	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		delayAutoClose();
+		return super.dispatchKeyEvent(event);
+	}
+	
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		// For Jelly Bean screen lock hack
+		if (ev.getAction() == MotionEvent.ACTION_UP)
+			delayAutoClose();
+		return super.dispatchTouchEvent(ev);
+	}
+
+	private void delayAutoClose() {
+		getAutoCloseHandler().removeCallbacks(mAutoCloseRunnable);
+		if (mAutoCloseDurationInMilliseconds != 0)
+			getAutoCloseHandler().postDelayed(mAutoCloseRunnable, mAutoCloseDurationInMilliseconds);
+	}
+
+	private Handler getAutoCloseHandler() {
+		if (mAutoCloseHandler == null) {
+			mAutoCloseHandler = new Handler(getMainLooper());
+		}
+		return mAutoCloseHandler;
 	}
 }
