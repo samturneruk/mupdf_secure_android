@@ -2,6 +2,9 @@ ABOUT
 
 MuPDF is a lightweight PDF, XPS and CBZ viewer and parser/rendering library.
 
+22\07\2014 - This is a modified version that has disabled insecure JS, external links,
+annotations, and printing, but added auto close, and request close.
+
 The renderer in MuPDF is tailored for high quality anti-aliased graphics. It
 renders text with metrics and spacing accurate to within fractions of a pixel
 for the highest fidelity in reproducing the look of a printed page on screen.
